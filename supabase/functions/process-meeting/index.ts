@@ -13,6 +13,7 @@ interface ProcessMeetingRequest {
 }
 
 Deno.serve(async (req: Request) => {
+  let requestMeetingId: string | undefined;
   if (req.method === "OPTIONS") {
     return new Response(null, {
       status: 200,
@@ -32,11 +33,12 @@ Deno.serve(async (req: Request) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const { meetingId, audioUrl }: ProcessMeetingRequest = await req.json();
+    requestMeetingId = meetingId;
 
     // Update status to processing
     await supabase
       .from("meetings")
-      .update({ status: "processing" })
+      .update({ status: "processing", updated_at: new Date().toISOString() })
       .eq("id", meetingId);
 
     // Download audio file from Supabase Storage
@@ -48,35 +50,94 @@ Deno.serve(async (req: Request) => {
       throw new Error(`Failed to download audio: ${downloadError.message}`);
     }
 
-    // Convert blob to buffer for OpenAI
-    const audioBuffer = await audioData.arrayBuffer();
-    const audioFile = new File([audioBuffer], "audio.webm", { type: "audio/webm" });
+    // Prepare file for OpenAI without extra copying
+    // Preserve original filename and infer MIME when possible for faster processing
+    const originalFileName = audioUrl.split("/").pop() ?? "audio";
+    const fileExtension = originalFileName.includes('.')
+      ? originalFileName.split('.').pop()!.toLowerCase()
+      : '';
 
-    // Step 1: Transcribe audio using OpenAI Whisper
+    const extensionToMime: Record<string, string> = {
+      mp3: "audio/mpeg",
+      wav: "audio/wav",
+      m4a: "audio/m4a",
+      aac: "audio/aac",
+      webm: "audio/webm",
+      ogg: "audio/ogg",
+      flac: "audio/flac",
+    };
+
+    const inferredMime = extensionToMime[fileExtension] || audioData.type || "application/octet-stream";
+    const audioFile = new File([audioData], originalFileName, { type: inferredMime });
+
+    // Step 1: Transcribe audio using OpenAI
+    const transcriptionModel = Deno.env.get("TRANSCRIPTION_MODEL") || "gpt-4o-mini-transcribe"; // will fallback to whisper-1 if unsupported
+    const transcriptionLanguage = Deno.env.get("TRANSCRIPTION_LANGUAGE") || "en";
+
     const transcriptionFormData = new FormData();
     transcriptionFormData.append("file", audioFile);
-    transcriptionFormData.append("model", "whisper-1");
+    transcriptionFormData.append("model", transcriptionModel);
+    // Provide language hint to speed up decoding
+    if (transcriptionLanguage) transcriptionFormData.append("language", transcriptionLanguage);
+    transcriptionFormData.append("temperature", "0");
 
-    const transcriptionResponse = await fetch(
-      "https://api.openai.com/v1/audio/transcriptions",
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${openaiApiKey}`,
-        },
-        body: transcriptionFormData,
+    let transcript: string;
+    try {
+      const transcriptionAbort = new AbortController();
+      const transcriptionTimeout = setTimeout(
+        () => transcriptionAbort.abort("transcription-timeout"),
+        1000 * 60 * 4
+      ); // 4 minutes
+      const transcriptionResponse = await fetch(
+        "https://api.openai.com/v1/audio/transcriptions",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${openaiApiKey}`,
+          },
+          body: transcriptionFormData,
+          signal: transcriptionAbort.signal,
+        }
+      ).finally(() => clearTimeout(transcriptionTimeout));
+
+      if (!transcriptionResponse.ok) {
+        throw new Error(`${transcriptionModel} failed: ${await transcriptionResponse.text()}`);
       }
-    );
 
-    if (!transcriptionResponse.ok) {
-      const error = await transcriptionResponse.text();
-      throw new Error(`Transcription failed: ${error}`);
+      const transcriptionResult = await transcriptionResponse.json();
+      transcript = transcriptionResult.text;
+    } catch (_primaryError) {
+      // Retry with whisper-1 as a fallback for accounts without 4o-mini-transcribe access
+      const fallbackFormData = new FormData();
+      fallbackFormData.append("file", audioFile);
+      fallbackFormData.append("model", "whisper-1");
+      if (transcriptionLanguage) fallbackFormData.append("language", transcriptionLanguage);
+      fallbackFormData.append("temperature", "0");
+
+      const fallbackAbort = new AbortController();
+      const fallbackTimeout = setTimeout(
+        () => fallbackAbort.abort("transcription-timeout"),
+        1000 * 60 * 6
+      ); // 6 minutes as whisper may be slower
+      const fallbackResponse = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${openaiApiKey}` },
+        body: fallbackFormData,
+        signal: fallbackAbort.signal,
+      }).finally(() => clearTimeout(fallbackTimeout));
+
+      if (!fallbackResponse.ok) {
+        const errorText = await fallbackResponse.text();
+        throw new Error(`Transcription failed: ${errorText}`);
+      }
+
+      const fallbackResult = await fallbackResponse.json();
+      transcript = fallbackResult.text;
     }
 
-    const transcriptionResult = await transcriptionResponse.json();
-    const transcript = transcriptionResult.text;
-
     // Step 2: Generate summary and extract action items using GPT
+    const summaryAbort = new AbortController();
+    const summaryTimeout = setTimeout(() => summaryAbort.abort("summary-timeout"), 1000 * 60 * 2); // 2 minutes
     const summaryResponse = await fetch(
       "https://api.openai.com/v1/chat/completions",
       {
@@ -99,10 +160,12 @@ Deno.serve(async (req: Request) => {
             },
           ],
           response_format: { type: "json_object" },
+          max_tokens: 700,
           temperature: 0.3,
         }),
+        signal: summaryAbort.signal,
       }
-    );
+    ).finally(() => clearTimeout(summaryTimeout));
 
     if (!summaryResponse.ok) {
       const error = await summaryResponse.text();
@@ -144,6 +207,21 @@ Deno.serve(async (req: Request) => {
     );
   } catch (error) {
     console.error("Error processing meeting:", error);
+
+    // Best effort: mark meeting as failed
+    try {
+      if (requestMeetingId) {
+        const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+        const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+        const supabase = createClient(supabaseUrl, supabaseServiceKey);
+        await supabase
+          .from("meetings")
+          .update({ status: "failed", updated_at: new Date().toISOString() })
+          .eq("id", requestMeetingId);
+      }
+    } catch {
+      // ignore DB failure updates
+    }
 
     return new Response(
       JSON.stringify({
