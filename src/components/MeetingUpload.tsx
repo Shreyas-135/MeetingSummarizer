@@ -84,7 +84,7 @@ export function MeetingUpload({ onUploadComplete }: MeetingUploadProps) {
 
   return (
     <form onSubmit={handleFileUpload} className="bg-slate-800/50 backdrop-blur-sm rounded-2xl p-6 border border-slate-700/50">
-      <h2 className="text-xl font-semibold text-white mb-4">Upload Meeting Recording</h2>
+      <h2 className="text-xl font-semibold text-white mb-4">Upload Meeting Recordings</h2>
 
       <div className="space-y-4">
         <div>
@@ -115,7 +115,7 @@ export function MeetingUpload({ onUploadComplete }: MeetingUploadProps) {
               className="w-full px-4 py-3 bg-slate-900/50 border border-slate-600 rounded-lg text-white file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-blue-600 file:text-white file:cursor-pointer hover:file:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
             />
           </div>
-          <p className="mt-2 text-xs text-slate-400">Supported formats: MP3, WAV, M4A, WEBM</p>
+          <p className="mt-2 text-xs text-slate-400">Formats Supported: MP3, WAV, M4A, WEBM</p>
         </div>
 
         {error && (
