@@ -40,7 +40,7 @@ The project uses a modern web development stack, evident from the included confi
 ---
 
 ## Deliverables
-[cite_start]The successful completion of this project includes[cite: 16]:
+The successful completion of this project includes:
 
 1.  This **GitHub Repository** and comprehensive `README.md` file.
 2.  A **Demo Video**.
