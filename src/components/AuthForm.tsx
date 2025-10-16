@@ -43,7 +43,7 @@ export function AuthForm() {
             <Mic className="w-8 h-8 text-white" />
           </div>
           <h1 className="text-3xl font-bold text-white mb-2">Meeting Summarizer</h1>
-          <p className="text-slate-400">Transform your meetings into actionable insights</p>
+          <p className="text-slate-400">Transform your meetings into strategic insights</p>
         </div>
 
         <div className="bg-slate-800/50 backdrop-blur-sm rounded-2xl shadow-xl p-8 border border-slate-700/50">
