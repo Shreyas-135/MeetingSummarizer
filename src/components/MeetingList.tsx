@@ -13,6 +13,42 @@ export function MeetingList({ refreshTrigger }: MeetingListProps) {
 
   useEffect(() => {
     fetchMeetings();
+
+    // Subscribe to realtime changes for meetings to reflect processing status updates
+    const channel = supabase
+      .channel('public:meetings')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'meetings',
+        },
+        (payload) => {
+          setMeetings((prev) => {
+            const newRow = payload.new as Meeting | null;
+            const oldRow = payload.old as Meeting | null;
+            switch (payload.eventType) {
+              case 'INSERT':
+                return newRow ? [newRow, ...prev] : prev;
+              case 'UPDATE': {
+                if (!newRow) return prev;
+                return prev.map((m) => (m.id === newRow.id ? { ...m, ...newRow } : m));
+              }
+              case 'DELETE':
+                if (!oldRow) return prev;
+                return prev.filter((m) => m.id !== oldRow.id);
+              default:
+                return prev;
+            }
+          });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [refreshTrigger]);
 
   const fetchMeetings = async () => {

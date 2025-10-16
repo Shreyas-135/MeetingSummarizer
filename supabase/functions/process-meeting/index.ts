@@ -22,6 +22,13 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
+    // Basic method validation
+    if (req.method !== 'POST') {
+      return new Response(JSON.stringify({ success: false, error: 'Method not allowed' }), {
+        status: 405,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const openaiApiKey = Deno.env.get("OPENAI_API_KEY");
@@ -32,15 +39,28 @@ Deno.serve(async (req: Request) => {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const { meetingId, audioUrl }: ProcessMeetingRequest = await req.json();
+    // Validate request body
+    let body: unknown;
+    try {
+      body = await req.json();
+    } catch {
+      throw new Error('Invalid JSON body');
+    }
+
+    const { meetingId, audioUrl } = (body ?? {}) as Partial<ProcessMeetingRequest>;
+    if (!meetingId || !audioUrl) {
+      throw new Error('Missing meetingId or audioUrl');
+    }
     requestMeetingId = meetingId;
     await supabase
       .from("meetings")
       .update({ status: "processing", updated_at: new Date().toISOString() })
       .eq("id", meetingId);
+    // Supabase Storage download expects the path relative to the bucket
+    const storagePath = audioUrl.startsWith('/') ? audioUrl.slice(1) : audioUrl;
     const { data: audioData, error: downloadError } = await supabase.storage
       .from("meeting-audio")
-      .download(audioUrl);
+      .download(storagePath);
 
     if (downloadError) {
       throw new Error(`Failed to download audio: ${downloadError.message}`);
@@ -161,7 +181,12 @@ Deno.serve(async (req: Request) => {
     }
 
     const summaryResult = await summaryResponse.json();
-    const analysis = JSON.parse(summaryResult.choices[0].message.content);
+    let analysis: any = {};
+    try {
+      analysis = JSON.parse(summaryResult.choices?.[0]?.message?.content ?? '{}');
+    } catch {
+      analysis = {};
+    }
     const { error: updateError } = await supabase
       .from("meetings")
       .update({
