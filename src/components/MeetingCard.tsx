@@ -12,7 +12,7 @@ export function MeetingCard({ meeting, onDelete }: MeetingCardProps) {
   const [deleting, setDeleting] = useState(false);
 
   const handleDelete = async () => {
-    if (!confirm('Are you sure you want to delete this meeting?')) return;
+    if (!confirm('Are you sure you want to delete the meeting?')) return;
     setDeleting(true);
     await onDelete(meeting.id);
   };
@@ -35,11 +35,11 @@ export function MeetingCard({ meeting, onDelete }: MeetingCardProps) {
       case 'completed':
         return 'Completed';
       case 'processing':
-        return 'Processing...';
+        return 'Processing Pls Wait...';
       case 'failed':
         return 'Failed';
       default:
-        return 'Uploading...';
+        return 'Uploading Pls Wait...';
     }
   };
 
@@ -79,14 +79,14 @@ export function MeetingCard({ meeting, onDelete }: MeetingCardProps) {
           <>
             {meeting.summary && (
               <div className="mb-4">
-                <h4 className="text-sm font-medium text-slate-300 mb-2">Summary</h4>
+                <h4 className="text-sm font-medium text-slate-300 mb-2">Meeting Summary</h4>
                 <p className="text-slate-400 text-sm leading-relaxed">{meeting.summary}</p>
               </div>
             )}
 
             {meeting.key_decisions && meeting.key_decisions.length > 0 && (
               <div className="mb-4">
-                <h4 className="text-sm font-medium text-slate-300 mb-2">Key Decisions</h4>
+                <h4 className="text-sm font-medium text-slate-300 mb-2">Key Insights</h4>
                 <ul className="space-y-2">
                   {meeting.key_decisions.map((decision, index) => (
                     <li key={index} className="flex items-start gap-2 text-sm text-slate-400">
@@ -100,7 +100,7 @@ export function MeetingCard({ meeting, onDelete }: MeetingCardProps) {
 
             {meeting.action_items && meeting.action_items.length > 0 && (
               <div className="mb-4">
-                <h4 className="text-sm font-medium text-slate-300 mb-2">Action Items</h4>
+                <h4 className="text-sm font-medium text-slate-300 mb-2">Actionable Items</h4>
                 <ul className="space-y-2">
                   {meeting.action_items.map((item, index) => (
                     <li key={index} className="bg-slate-900/50 rounded-lg p-3 border border-slate-700/50">
@@ -137,14 +137,14 @@ export function MeetingCard({ meeting, onDelete }: MeetingCardProps) {
         {meeting.status === 'processing' && (
           <div className="text-center py-8">
             <Loader2 className="w-8 h-8 text-blue-500 animate-spin mx-auto mb-3" />
-            <p className="text-sm text-slate-400">Processing your meeting recording...</p>
+            <p className="text-sm text-slate-400">Processing your meeting recording in a while...</p>
           </div>
         )}
 
         {meeting.status === 'failed' && (
           <div className="bg-red-500/10 border border-red-500/50 rounded-lg p-4">
             <p className="text-sm text-red-400">
-              Processing failed. Please try uploading again.
+              Processing failure. Please try uploading again or later.
             </p>
           </div>
         )}
