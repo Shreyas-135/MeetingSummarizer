@@ -78,7 +78,7 @@ function App() {
           </div>
 
           <div className="lg:col-span-2">
-            <h2 className="text-2xl font-bold text-white mb-6">Your Meetings</h2>
+            <h2 className="text-2xl font-bold text-white mb-6">My Meetings</h2>
             <MeetingList refreshTrigger={refreshTrigger} />
           </div>
         </div>
