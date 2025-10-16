@@ -24,7 +24,6 @@
     - Configure storage policies for audio file access
 */
 
--- Create meetings table
 CREATE TABLE IF NOT EXISTS meetings (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   title text NOT NULL DEFAULT 'Untitled Meeting',
@@ -39,10 +38,8 @@ CREATE TABLE IF NOT EXISTS meetings (
   user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE
 );
 
--- Enable RLS
 ALTER TABLE meetings ENABLE ROW LEVEL SECURITY;
 
--- Policies for meetings table
 CREATE POLICY "Users can view their own meetings"
   ON meetings FOR SELECT
   TO authenticated
@@ -64,7 +61,6 @@ CREATE POLICY "Users can delete their own meetings"
   TO authenticated
   USING (auth.uid() = user_id);
 
--- Create storage bucket for meeting audio files
 INSERT INTO storage.buckets (id, name, public)
 VALUES ('meeting-audio', 'meeting-audio', false)
 ON CONFLICT (id) DO NOTHING;
@@ -85,6 +81,5 @@ CREATE POLICY "Users can delete their own audio files"
   TO authenticated
   USING (bucket_id = 'meeting-audio' AND auth.uid()::text = (storage.foldername(name))[1]);
 
--- Create index for faster queries
 CREATE INDEX IF NOT EXISTS idx_meetings_user_id ON meetings(user_id);
 CREATE INDEX IF NOT EXISTS idx_meetings_created_at ON meetings(created_at DESC);
