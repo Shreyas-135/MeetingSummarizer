@@ -157,7 +157,7 @@ Deno.serve(async (req: Request) => {
 
     if (!summaryResponse.ok) {
       const error = await summaryResponse.text();
-      throw new Error(`Summary generation failed: ${error}`);
+      throw new Error(`Summary failed: ${error}`);
     }
 
     const summaryResult = await summaryResponse.json();
@@ -209,7 +209,7 @@ Deno.serve(async (req: Request) => {
     return new Response(
       JSON.stringify({
         success: false,
-        error: error instanceof Error ? error.message : "Unknown error occurred",
+        error: error instanceof Error ? error.message : "Unknown error has occurred",
       }),
       {
         status: 500,
