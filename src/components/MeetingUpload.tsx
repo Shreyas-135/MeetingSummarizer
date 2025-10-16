@@ -38,7 +38,7 @@ export function MeetingUpload({ onUploadComplete }: MeetingUploadProps) {
 
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('meeting-audio')
-        .upload(fileName, file);
+        .upload(fileName, file, { contentType: file.type || 'application/octet-stream', upsert: false });
 
       if (uploadError) throw uploadError;
 
@@ -55,20 +55,19 @@ export function MeetingUpload({ onUploadComplete }: MeetingUploadProps) {
 
       if (insertError) throw insertError;
 
-      const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/process-meeting`;
-      const { data: { session } } = await supabase.auth.getSession();
-
-      fetch(apiUrl, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${session?.access_token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          meetingId: meeting.id,
-          audioUrl: uploadData.path,
-        }),
-      }).catch(err => console.error('Background processing error:', err));
+      // Trigger background processing via Supabase Edge Function (fire-and-forget)
+      // Do not await to avoid blocking the UI while long processing runs on the server
+      void supabase.functions
+        .invoke('process-meeting', {
+          body: {
+            meetingId: meeting.id,
+            audioUrl: uploadData.path,
+          },
+        })
+        .then(({ error }) => {
+          if (error) console.error('Processing function error:', error);
+        })
+        .catch((err) => console.error('Processing invocation failed:', err));
 
       setTitle('');
       if (fileInputRef.current) {
