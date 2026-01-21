@@ -58,6 +58,7 @@ Deno.serve(async (req: Request) => {
       .eq("id", meetingId);
     // Supabase Storage download expects the path relative to the bucket
     const storagePath = audioUrl.startsWith('/') ? audioUrl.slice(1) : audioUrl;
+    console.log(`Downloading audio from storage path: ${storagePath}`);
     const { data: audioData, error: downloadError } = await supabase.storage
       .from("meeting-audio")
       .download(storagePath);
@@ -83,7 +84,7 @@ Deno.serve(async (req: Request) => {
     const inferredMime = extensionToMime[fileExtension] || audioData.type || "application/octet-stream";
     const audioFile = new File([audioData], originalFileName, { type: inferredMime });
 
-    const transcriptionModel = Deno.env.get("TRANSCRIPTION_MODEL") || "gpt-4o-mini-transcribe"; 
+    const transcriptionModel = Deno.env.get("TRANSCRIPTION_MODEL") || "whisper-1"; 
     const transcriptionLanguage = Deno.env.get("TRANSCRIPTION_LANGUAGE") || "en";
 
     const transcriptionFormData = new FormData();
@@ -94,6 +95,7 @@ Deno.serve(async (req: Request) => {
 
     let transcript: string;
     try {
+      console.log(`Starting transcription with model: ${transcriptionModel}`);
       const transcriptionAbort = new AbortController();
       const transcriptionTimeout = setTimeout(
         () => transcriptionAbort.abort("transcription-timeout"),
@@ -112,12 +114,16 @@ Deno.serve(async (req: Request) => {
       ).finally(() => clearTimeout(transcriptionTimeout));
 
       if (!transcriptionResponse.ok) {
-        throw new Error(`${transcriptionModel} failed: ${await transcriptionResponse.text()}`);
+        const errorText = await transcriptionResponse.text();
+        console.error(`Transcription failed with model ${transcriptionModel}: ${errorText}`);
+        throw new Error(`${transcriptionModel} failed: ${errorText}`);
       }
 
       const transcriptionResult = await transcriptionResponse.json();
       transcript = transcriptionResult.text;
+      console.log(`Transcription successful, transcript length: ${transcript.length}`);
     } catch (_primaryError) {
+      console.log(`Primary transcription failed, attempting fallback with whisper-1`);
       const fallbackFormData = new FormData();
       fallbackFormData.append("file", audioFile);
       fallbackFormData.append("model", "whisper-1");
@@ -138,12 +144,15 @@ Deno.serve(async (req: Request) => {
 
       if (!fallbackResponse.ok) {
         const errorText = await fallbackResponse.text();
+        console.error(`Fallback transcription failed: ${errorText}`);
         throw new Error(`Transcription failed: ${errorText}`);
       }
 
       const fallbackResult = await fallbackResponse.json();
       transcript = fallbackResult.text;
+      console.log(`Fallback transcription successful, transcript length: ${transcript.length}`);
     }
+    console.log(`Starting summarization with GPT-4o-mini`);
     const summaryAbort = new AbortController();
     const summaryTimeout = setTimeout(() => summaryAbort.abort("summary-timeout"), 1000 * 60 * 2); // 2 minutes
     const summaryResponse = await fetch(
@@ -177,8 +186,10 @@ Deno.serve(async (req: Request) => {
 
     if (!summaryResponse.ok) {
       const error = await summaryResponse.text();
+      console.error(`Summarization failed: ${error}`);
       throw new Error(`Summary failed: ${error}`);
     }
+    console.log(`Summarization successful`);
 
     const summaryResult = await summaryResponse.json();
     let analysis: any = {};
@@ -187,6 +198,7 @@ Deno.serve(async (req: Request) => {
     } catch {
       analysis = {};
     }
+    console.log(`Updating meeting ${meetingId} in database with results`);
     const { error: updateError } = await supabase
       .from("meetings")
       .update({
@@ -200,8 +212,10 @@ Deno.serve(async (req: Request) => {
       .eq("id", meetingId);
 
     if (updateError) {
+      console.error(`Failed to update meeting in database: ${updateError.message}`);
       throw new Error(`Failed to update meeting: ${updateError.message}`);
     }
+    console.log(`Meeting ${meetingId} successfully processed and updated`);
 
     return new Response(
       JSON.stringify({
@@ -235,6 +249,8 @@ Deno.serve(async (req: Request) => {
       JSON.stringify({
         success: false,
         error: error instanceof Error ? error.message : "Unknown error has occurred",
+        details: error instanceof Error ? error.stack : undefined,
+        meetingId: requestMeetingId,
       }),
       {
         status: 500,
