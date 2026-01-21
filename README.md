@@ -54,3 +54,71 @@ The system will be evaluated based on the following key metrics:
 * **Summary Quality**
 * **LLM Prompt Effectiveness**
 * **Code Structure**
+
+---
+
+## Deployment Configuration
+
+### Required Environment Variables
+
+To deploy and run the Meeting Summarizer, you need to configure the following environment variables in your Supabase Edge Functions:
+
+#### Required Secrets:
+- **`OPENAI_API_KEY`**: Your OpenAI API key for accessing transcription (Whisper) and summarization (GPT-4o-mini) services
+- **`SUPABASE_URL`**: Your Supabase project URL
+- **`SUPABASE_SERVICE_ROLE_KEY`**: Your Supabase service role key with admin privileges
+
+#### Optional Environment Variables:
+- **`TRANSCRIPTION_MODEL`**: The OpenAI transcription model to use (default: `whisper-1`)
+- **`TRANSCRIPTION_LANGUAGE`**: The language code for transcription (default: `en`). See [OpenAI's language support](https://platform.openai.com/docs/guides/speech-to-text) for available options.
+
+### Setting Secrets in Supabase
+
+Use the Supabase CLI to set your environment secrets:
+
+```bash
+# Install Supabase CLI if you haven't already
+npm install -g supabase
+
+# Login to Supabase
+supabase login
+
+# Link your project
+supabase link --project-ref your-project-ref
+
+# Set required secrets
+supabase secrets set OPENAI_API_KEY=your_openai_api_key_here
+supabase secrets set SUPABASE_URL=your_supabase_url_here
+supabase secrets set SUPABASE_SERVICE_ROLE_KEY=your_service_role_key_here
+
+# Optional: Set custom transcription model (if different from whisper-1)
+supabase secrets set TRANSCRIPTION_MODEL=whisper-1
+
+# Optional: Set transcription language (if different from English)
+supabase secrets set TRANSCRIPTION_LANGUAGE=en
+```
+
+### Deploying the Edge Function
+
+After setting the secrets, deploy the process-meeting function:
+
+```bash
+# Deploy the function
+supabase functions deploy process-meeting
+
+# Verify deployment
+supabase functions list
+```
+
+### Testing the Deployment
+
+You can test the deployed function using curl:
+
+```bash
+curl -X POST https://your-project-ref.supabase.co/functions/v1/process-meeting \
+  -H "Authorization: Bearer YOUR_ANON_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"meetingId": "test-meeting-id", "audioUrl": "path/to/audio.mp3"}'
+```
+
+---
